@@ -24,17 +24,38 @@
 
 
 namespace {
-HashMap<QString, model::Game*> build_escaped_title_map(const std::vector<model::Game*>& games)
-{
-    const QRegularExpression rx_invalid(QStringLiteral(R"([<>:"\/\\|?*'])"));
-    const QString underscore(QLatin1Char('_'));
 
-    HashMap<QString, model::Game*> out;
+const QRegularExpression rx_invalid(QStringLiteral(R"([^a-zA-Z0-9])"));
+
+QString format_title(const QString title)
+{
+    QString out = title.toLower();
+    if (out.startsWith("the "))
+    {
+        out.remove(0, 4);
+    }
+    out.replace(rx_invalid, "");
+    return out;
+}
+
+bool compare_title_length(QPair<QString, model::Game*> a, QPair<QString, model::Game*> b)
+{
+    return a.second->title().length() > b.second->title().length();
+}
+
+QVector<QPair<QString, model::Game*>> build_escaped_title_list(const std::vector<model::Game*>& games)
+{
+    QVector<QPair<QString, model::Game*>> out;
     for (model::Game* const game_ptr : games) {
         QString title = game_ptr->title();
-        title.replace(rx_invalid, underscore);
-        out.emplace(std::move(title), game_ptr);
+        QString formatted = format_title(title);
+        QPair<QString, model::Game*> pair;
+        pair.first = std::move(formatted);
+        pair.second = game_ptr;
+        out.append(std::move(pair));
     }
+
+    std::sort(out.begin(), out.end(), compare_title_length);
 
     return out;
 }
@@ -88,27 +109,27 @@ Assets::Assets(QString log_tag, QString lb_root_path)
 
 void Assets::find_assets_for(const QString& platform_name, const std::vector<model::Game*>& games) const
 {
-    const HashMap<QString, model::Game*> esctitle_to_game_map = build_escaped_title_map(games);
+    const QVector<QPair<QString, model::Game*>> esctitle_to_game_list = build_escaped_title_list(games);
 
     const QString images_root = m_lb_root_path % QLatin1String("Images/") % platform_name % QLatin1Char('/');
     // TODO: C++17
     for (const auto& assetdir_pair : m_dir_list) {
         const QString assetdir_path = images_root + assetdir_pair.first;
         const AssetType assetdir_type = assetdir_pair.second;
-        find_assets_in(assetdir_path, assetdir_type, esctitle_to_game_map);
+        find_assets_in(assetdir_path, assetdir_type, esctitle_to_game_list);
     }
 
     const QString music_root = m_lb_root_path % QLatin1String("Music/") % platform_name % QLatin1Char('/');
-    find_assets_in(music_root, AssetType::MUSIC, esctitle_to_game_map);
+    find_assets_in(music_root, AssetType::MUSIC, esctitle_to_game_list);
 
     const QString video_root = m_lb_root_path % QLatin1String("Videos/") % platform_name % QLatin1Char('/');
-    find_assets_in(video_root, AssetType::VIDEO, esctitle_to_game_map);
+    find_assets_in(video_root, AssetType::VIDEO, esctitle_to_game_list);
 }
 
 void Assets::find_assets_in(
     const QString& asset_dir,
     const AssetType asset_type,
-    const HashMap<QString, model::Game*>& title_to_game_map) const
+    const QVector<QPair<QString, model::Game*>>& title_to_game_map) const
 {
     constexpr auto FIND_ONLY_FILES = QDir::Files | QDir::Readable | QDir::NoDotAndDotDot;
     constexpr auto ITER_RECURSIVE = QDirIterator::Subdirectories;
@@ -116,19 +137,14 @@ void Assets::find_assets_in(
     QDirIterator file_it(asset_dir, FIND_ONLY_FILES, ITER_RECURSIVE);
     while (file_it.hasNext()) {
         QString path = file_it.next();
-
         const QString basename = file_it.fileInfo().completeBaseName();
-        auto it = title_to_game_map.find(basename);
-        if (it != title_to_game_map.cend())
-            it->second->assetsMut().add_file(asset_type, path);
-
-        const bool has_number_suffix = rx_number_suffix.match(basename).hasMatch();
-        const QString game_title = has_number_suffix
-            ? basename.left(basename.length() - 3) // gamename "-xx" .ext
-            : basename;
-        it = title_to_game_map.find(game_title);
-        if (it != title_to_game_map.cend())
-            it->second->assetsMut().add_file(asset_type, std::move(path));
+        const QString formatted = format_title(basename);
+        for (auto& item : title_to_game_map) {
+            if (formatted.startsWith(item.first)) {
+                item.second->assetsMut().add_file(asset_type, path);
+                break;
+            }
+        }
     }
 }
 

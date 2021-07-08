@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include "utils/HashMap.h"
-
 #include <QString>
 #include <QRegularExpression>
 #include <vector>
@@ -44,7 +42,7 @@ private:
     const std::vector<std::pair<QString, AssetType>> m_dir_list;
     const QRegularExpression rx_number_suffix;
 
-    void find_assets_in(const QString&, const AssetType, const HashMap<QString, model::Game*>&) const;
+    void find_assets_in(const QString&, const AssetType, const QVector<QPair<QString, model::Game*>>&) const;
 };
 
 } // namespace launchbox
