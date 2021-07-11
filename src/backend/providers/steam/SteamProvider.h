@@ -23,6 +23,10 @@
 namespace providers {
 namespace steam {
 
+namespace utils {
+    QString find_steam_call();
+}
+
 class SteamProvider : public Provider {
     Q_OBJECT
 

@@ -24,6 +24,7 @@
 #include "model/gaming/GameFile.h"
 #include "providers/SearchContext.h"
 #include "providers/launchbox/LaunchBoxXml.h"
+#include "providers/steam/SteamProvider.h"
 #include "utils/PathTools.h"
 
 #include <QDir>
@@ -34,6 +35,10 @@
 
 namespace providers {
 namespace launchbox {
+
+namespace {
+    QString steam_call = providers::steam::utils::find_steam_call();
+}
 
 enum class GameField : unsigned char {
     ID,
@@ -70,6 +75,7 @@ void apply_game_fields(
     QString emu_id;
     QString emu_params;
     QString emu_platform_name;
+    QString source;
 
     // TODO: C++17
     for (const auto& pair : fields) {
@@ -126,15 +132,20 @@ void apply_game_fields(
             case GameField::ASSETPATH_MUSIC:
                 game.assetsMut().add_file(AssetType::MUSIC, pair.second);
                 break;
+            case GameField::SOURCE:
+                source = pair.second;
+                break;
             case GameField::ID:
             case GameField::PATH:
-            case GameField::SOURCE:
                 // handled earlier or handled dfferently
                 break;
         }
     }
 
-    if (emu_id.isEmpty()) {
+    if (source == QLatin1String("Steam")) {
+        game.setLaunchCmd(steam_call % fields.at(GameField::PATH));
+        return;
+    } else if (emu_id.isEmpty()) {
         game.setLaunchCmd(QStringLiteral("{file.path}"));
         game.setLaunchWorkdir(::clean_abs_dir(QFileInfo(fields.at(GameField::PATH))));
         return;
@@ -401,13 +412,10 @@ std::vector<model::Game*> GamelistXml::find_games_for(
                     continue;
                 }
 
-                const QString steam_id = match.captured(1);
-                const QString steam_uri = QStringLiteral("steam:") + steam_id;
-
-                game_ptr = sctx.game_by_uri(steam_uri);
+                game_ptr = sctx.game_by_uri(game_path);
                 if (!game_ptr) {
                     game_ptr = sctx.create_game_for(collection);
-                    sctx.game_add_uri(*game_ptr, steam_uri);
+                    sctx.game_add_uri(*game_ptr, game_path);
                 }
             }
             else {
